@@ -1,0 +1,11 @@
+---
+title: "Simple Website"
+author: "YZ"
+date: "11/9/2019"
+output: html_document
+---
+
+# The Simple Yet Awesome Website
+## Note: The 6 lines of text above are the YAHL tags
+### We will Knit the RMD to a html file next
+Then push index.html to the github.io repo.
