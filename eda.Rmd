@@ -1,0 +1,121 @@
+---
+title: "Doing Data Science - Midterm Project"
+author: "Michael (Branum) Stephan and Yang Zhang"
+date: "10/19/2019"
+output: html_document
+---
+```{r message=FALSE}
+library(dplyr)
+library(here)
+library(ggplot2)
+library(tidyr)
+library(ggthemes)
+library(doBy)
+library(reshape)
+library(plotly)
+library(GGally)
+library(caret)
+library(e1071)
+library(class)
+library(usmap)
+library(magrittr)
+```
+\newline
+First, we create some custom theme to ensure homogoneity throughout the presentation deck.
+```{r}
+# set global theme
+# custom theme
+bg_color = "#0B0C10"
+bar_color = "#66FCF1"
+text_main = "#FFFFF"
+text_ticks = "#CFC6C7"
+axis_lines = #453a3b"
+cust_theme <- theme(plot.title = element_text(color = 'white', vjust=0.5, hjust=0.5),
+                    plot.background = element_rect(fill = bg_color),
+                    panel.background = element_rect(fill = bg_color),
+                    axis.text.x=element_text(angle=90,hjust=1),
+                    axis.text = element_text(colour = text_ticks),
+                    panel.grid.major.x = element_blank(),
+                    panel.grid.minor.x = element_blank(),
+                    panel.grid.major.y =  element_line(colour = "#453a3b", linetype = 1, size = 0.25),
+                    panel.grid.minor.y = element_blank(),
+                    axis.title = element_text(colour = "white"))
+
+# overwrite default theme with custom
+theme_set(theme_foundation() + cust_theme)
+```
+\newline
+Then, we created a relative file path from the "here" library for better reproducibility. After setting our working directory, we imported the files into dataframes for better transformation capabilities.
+```{r}
+# set relative brewery file path as variable
+beers_csv <- here("project_files", "Beers.csv")
+breweries_csv <- here("project_files", "Breweries.csv")
+
+# initialize dataframes
+beers <- data.frame(read.csv(beers_csv))
+breweries <- data.frame(read.csv(breweries_csv))
+```
+\newline
+# Part 1: Counting breweries by state.
+How many breweries are present in each state?
+In order to investigate the number of breweries in our data set, we group everything by state and then perform a tally function in order to count total breweries. Then we plot the results as a bar chart using ggplot (and plotly).
+```{r}
+# Question 1 - How many breweries are present in each state?
+per_state <- breweries %>% group_by(State) %>% tally(name="breweries_per_state") %>% arrange(desc(breweries_per_state))
+fig1 <- per_state %>% ggplot(aes(x=reorder(State, breweries_per_state), y=breweries_per_state)) + geom_bar(stat="identity", fill=bar_color) + ggtitle("Total Breweries per State") + ylab("Total Breweries") + xlab("State")
+
+ggplotly(fig1)
+```
+\newline
+# Part 2: Joining beer and brewery datasets.
+Can we combine the data? What's it look like? In order to join the two dataframes, we called the "merge" function and joined the two dataframes on common keys - brewery_id and brew_id. We made sure to rename the columns for easier reuse and then displayed the results using an rbind function to combine the heads and tails of the resultant dataframe.
+```{r}
+# Question 2: Merge Beer data with Breweries data. Print head(6) and tail(6)
+# Note: left join breweries on beers because 1-many relationship
+main <- merge(beers, breweries, by.x="Brewery_id", by.y="Brew_ID")
+
+# clean column names for good housekeeping
+main_cols <- c("brewery_id", "beer_name", "beer_id", "abv", "ibu", "beer_style", "serving_ounces", "brewery_name", "city", "state")
+names(main) <- main_cols
+
+# print head and tail of resultant data set
+print(rbind(head(main, 6), tail(main, 6)))
+```
+\newline
+# Part 3: Addressing "NA" values.
+How can we address the "NA" values? In order to perform more detailed analysis, it's important to address the null values. In order to get a better idea of missing data, we filtered the dataframe to only null values using "is.na" and then took the count of each column using "colSums". You can see in the print statement below that the most influencial null value is ibu. Almost half of the ibu values are missing! In order to "massage" this into workable data, we made an assumption that the median values for each style should be fairly close to the actual values. This is due to the fact that each beer style has ranges on ibu, therefore, we know a good range of potential values which the actual could lie in. 
+```{r}
+# Part 3: Address NA values in each column
+# find the NA count per column to decide next steps...you will see some missing abv and A LOT of missing ibu
+print(colSums(is.na(main)))
+
+# Preserve a version of merged dataset by removing all NAs
+main_clean<-na.omit(main)
+
+# based on evidence, will use median abv and ibu per beer style to fill na
+main <- main %>% group_by(beer_style) %>% mutate(ibu_corr = ifelse(is.na(ibu), median(ibu, na.rm = TRUE), ibu), abv_corr = ifelse(is.na(abv), median(abv, na.rm = TRUE), abv))
+
+# let's see how we did...you will see all abv "corrected" and ibu had over 950 values "corrected"
+print(colSums(is.na(main)))
+
+# Export the no-NAs file to a new csv file
+#write.csv(main_clean,"./Brewery_and_Beer_Clean.csv", row.names = FALSE)
+```
+\newline
+# Part 4: Median ABV and IBU for entire dataset.
+After checking for null values, we then compute the median ABV and IBU for the dataset to give a representation of the central values to expect among all beers. We accomplish this using a grouping statement and then dplyr's summarise statement in order to perform a median aggregation on each column. 
+```{r message=FALSE}
+# Part 4: Compute Median ABV and IBU and do bar plot
+medians <- main_clean %>% group_by(state) %>% summarise(median_abv = median(abv), median_ibu = median(ibu))
+
+#Bar_Chart_Plotter
+
+# ibu bar plot
+fig2 <- medians %>% ggplot() + geom_bar(aes(x=reorder(state, -median_ibu), y=median_ibu), stat="identity", fill=bar_color) + ggtitle("Median IBU per State") +ylab("Median IBU") + xlab("State") 
+
+# abv bar plot
+fig3 <- medians %>% ggplot() + geom_bar(aes(x=reorder(state, -median_abv), y=median_abv*100), stat="identity", fill=bar_color) + ggtitle("Median ABV per State") +ylab("Median ABV") + xlab("State") + expand_limits(y=c(0, max(medians$median_abv+0.5)))
+
+ggplotly(fig2)
+ggplotly(fig3)
+```
